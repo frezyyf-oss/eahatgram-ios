@@ -3,8 +3,6 @@ name: Build eahatgram
 on:
   push:
     branches: [master, main]
-  pull_request:
-    branches: [master, main]
   workflow_dispatch:
 
 jobs:
@@ -13,15 +11,39 @@ jobs:
     timeout-minutes: 180
 
     steps:
-      - name: Checkout
+      - name: Checkout eahat changes
         uses: actions/checkout@v4
         with:
+          path: eahat-changes
           submodules: false
 
-      - name: Init submodules
+      - name: Clone Telegram-iOS with submodules
         run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive --jobs 4
+          git clone --recurse-submodules --shallow-submodules --depth 1 \
+            https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios
+
+      - name: Apply eahatgram modifications
+        run: |
+          SRC=eahat-changes
+          DST=telegram-ios
+
+          # New files
+          cp "$SRC/submodules/SettingsUI/Sources/EahatGramStats.swift"            "$DST/submodules/SettingsUI/Sources/"
+          cp "$SRC/submodules/SettingsUI/Sources/EahatGramController.swift"       "$DST/submodules/SettingsUI/Sources/"
+          cp "$SRC/submodules/SettingsUI/Sources/EahatGramStatsController.swift"  "$DST/submodules/SettingsUI/Sources/"
+          cp "$SRC/submodules/SettingsUI/Sources/EahatGramVisualController.swift" "$DST/submodules/SettingsUI/Sources/"
+          cp "$SRC/submodules/SettingsUI/Sources/EahatGramNFTController.swift"    "$DST/submodules/SettingsUI/Sources/"
+          cp "$SRC/submodules/SettingsUI/Sources/EahatGramRatingController.swift" "$DST/submodules/SettingsUI/Sources/"
+
+          # Modified files
+          cp "$SRC/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift" \
+             "$DST/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/"
+          cp "$SRC/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift" \
+             "$DST/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/"
+          cp "$SRC/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift" \
+             "$DST/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/"
+          cp "$SRC/submodules/TelegramUI/Sources/ChatController.swift" \
+             "$DST/submodules/TelegramUI/Sources/"
 
       - name: Select Xcode
         run: |
@@ -29,19 +51,17 @@ jobs:
           xcodebuild -version
 
       - name: Install Bazelisk
-        run: |
-          brew install bazelisk
-          echo "USE_BAZEL_VERSION=8.4.2" >> "$GITHUB_ENV"
+        run: brew install bazelisk
 
       - name: Restore Bazel cache
         uses: actions/cache@v4
         with:
           path: ~/telegram-bazel-cache
-          key: bazel-${{ runner.os }}-${{ hashFiles('WORKSPACE', 'build-system/**/*.bzl', 'build-system/**/*.py') }}
-          restore-keys: |
-            bazel-${{ runner.os }}-
+          key: bazel-${{ runner.os }}-${{ hashFiles('telegram-ios/WORKSPACE') }}
+          restore-keys: bazel-${{ runner.os }}-
 
       - name: Build debug_sim_arm64
+        working-directory: telegram-ios
         run: |
           python3 build-system/Make/Make.py \
             --overrideXcodeVersion \
@@ -53,17 +73,10 @@ jobs:
             --buildNumber="${{ github.run_number }}" \
             --configuration=debug_sim_arm64
 
-      - name: Locate IPA
-        id: find_ipa
-        run: |
-          IPA=$(find -L bazel-bin -name "Telegram.ipa" -type f | head -1)
-          echo "ipa_path=$IPA" >> "$GITHUB_OUTPUT"
-          echo "Found: $IPA"
-
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: eahatgram-sim-${{ github.run_number }}
-          path: ${{ steps.find_ipa.outputs.ipa_path }}
+          path: telegram-ios/bazel-bin/Telegram/Telegram.ipa
           if-no-files-found: warn
           retention-days: 14
