@@ -90,6 +90,7 @@ jobs:
         working-directory: telegram-ios
         run: |
           python3 build-system/Make/Make.py \
+            --overrideXcodeVersion \
             --cacheDir "$HOME/telegram-bazel-cache" \
             build \
             --continueOnError \
