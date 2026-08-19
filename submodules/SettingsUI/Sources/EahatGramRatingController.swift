@@ -209,7 +209,6 @@ public func eahatGramRatingController(context: AccountContext) -> ViewController
     }
 
     var dismissInputImpl: (() -> Void)?
-    var presentSuccessImpl: (() -> Void)?
 
     let arguments = EahatGramRatingArguments(
         updateLevel: { text in updateState { s in var s = s; s.levelText = text; return s } },
@@ -239,7 +238,6 @@ public func eahatGramRatingController(context: AccountContext) -> ViewController
             }.start(completed: {
                 Queue.mainQueue().async {
                     updateState { s in var s = s; s.isApplying = false; return s }
-                    presentSuccessImpl?()
                 }
             })
         }
@@ -279,19 +277,6 @@ public func eahatGramRatingController(context: AccountContext) -> ViewController
 
     dismissInputImpl = { [weak controller] in
         controller?.view.endEditing(true)
-    }
-    presentSuccessImpl = { [weak controller] in
-        guard let controller else { return }
-        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-        controller.present(
-            UndoOverlayController(
-                presentationData: presentationData,
-                content: .succeed(text: "Рейтинг обновлён", timeout: nil, customUndoText: nil),
-                elevatedLayout: false,
-                action: { _ in return false }
-            ),
-            in: .current
-        )
     }
 
     return controller
