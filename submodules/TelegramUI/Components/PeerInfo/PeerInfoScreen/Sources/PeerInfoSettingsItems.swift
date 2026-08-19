@@ -21,6 +21,7 @@ enum SettingsSection: Int, CaseIterable {
     case proxy
     case apps
     case shortcuts
+    case eahatBanner
     case advanced
     case payment
     case extra
@@ -221,6 +222,10 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
         interaction.openSettings(.chatFolders)
     }))
     
+    items[.eahatBanner]!.append(PeerInfoScreenDisclosureItem(id: 9000, label: .text("mod"), text: "eahatgram", action: {
+        interaction.openSettings(.eahatgram)
+    }))
+
     let notificationsWarning: Bool
     if let settings = data.globalSettings {
         notificationsWarning = shouldDisplayNotificationsPermissionWarning(status: settings.notificationAuthorizationStatus, suppressed:  settings.notificationWarningSuppressed)
