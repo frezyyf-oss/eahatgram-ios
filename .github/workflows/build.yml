@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 180
 
     steps:
@@ -47,7 +47,13 @@ jobs:
 
       - name: Select Xcode
         run: |
-          sudo xcode-select -s /Applications/Xcode_16.2.app
+          # Find latest available Xcode that matches project requirement (26.x preferred, 16.x fallback)
+          XCODE=$(ls /Applications/ | grep -E '^Xcode_26' | sort -V | tail -1)
+          if [ -z "$XCODE" ]; then
+            XCODE=$(ls /Applications/ | grep -E '^Xcode_' | sort -V | tail -1)
+          fi
+          echo "Using: $XCODE"
+          sudo xcode-select -s "/Applications/$XCODE"
           xcodebuild -version
 
       - name: Install Bazelisk
@@ -84,7 +90,6 @@ jobs:
         working-directory: telegram-ios
         run: |
           python3 build-system/Make/Make.py \
-            --overrideXcodeVersion \
             --cacheDir "$HOME/telegram-bazel-cache" \
             build \
             --continueOnError \
