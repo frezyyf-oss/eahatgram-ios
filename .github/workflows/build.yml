@@ -36,19 +36,7 @@ jobs:
           restore-keys: |
             bazel-${{ runner.os }}-
 
-      - name: Setup codesigning SSH key
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$CODESIGNING_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan gitlab.com >> ~/.ssh/known_hosts 2>/dev/null
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-        env:
-          CODESIGNING_SSH_KEY: ${{ secrets.CODESIGNING_SSH_KEY }}
-
       - name: Build debug_sim_arm64
-        env:
-          TELEGRAM_CODESIGNING_GIT_PASSWORD: ${{ secrets.CODESIGNING_GIT_PASSWORD }}
         run: |
           python3 build-system/Make/Make.py \
             --overrideXcodeVersion \
@@ -56,9 +44,6 @@ jobs:
             build \
             --continueOnError \
             --configurationPath build-system/appstore-configuration.json \
-            --gitCodesigningRepository "${{ secrets.CODESIGNING_REPO }}" \
-            --gitCodesigningType development \
-            --gitCodesigningUseCurrent \
             --buildNumber="${{ github.run_number }}" \
             --configuration=debug_sim_arm64
 
