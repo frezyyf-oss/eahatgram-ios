@@ -63,26 +63,22 @@ jobs:
       - name: Stub provisioning profiles for simulator
         working-directory: telegram-ios
         run: |
-          python3 - <<'EOF'
-          import re
+          cat > /tmp/patch_bc.py << 'PYEOF'
           path = 'build-system/Make/BuildConfiguration.py'
           src = open(path).read()
-          # XcodeManagedCodesigningSource.copy_profiles_to_destination is a no-op,
-          # so the generated provisioning/BUILD declares no targets and Bazel fails.
-          # For sim builds the profiles are never read — stubs let the graph resolve.
-          src = re.sub(
-              r'(class XcodeManagedCodesigningSource.*?def copy_profiles_to_destination\(self, destination_path\):)\s*pass',
-              r'''\1
-              import os as _os
-              _os.makedirs(destination_path, exist_ok=True)
-              for _n in ["Telegram","Share","NotificationService","NotificationContent","Widget","BroadcastUpload","Intents"]:
-                  open(_os.path.join(destination_path, _n + ".mobileprovision"), "w").close()''',
-              src,
-              flags=re.DOTALL
+          old_fn = '    def copy_profiles_to_destination(self, destination_path):\n        pass'
+          new_fn = (
+              '    def copy_profiles_to_destination(self, destination_path):\n'
+              '        import os as _os\n'
+              '        _os.makedirs(destination_path, exist_ok=True)\n'
+              '        for _n in ["Telegram","Share","NotificationService","NotificationContent","Widget","BroadcastUpload","Intents"]:\n'
+              '            open(_os.path.join(destination_path, _n + ".mobileprovision"), "w").close()'
           )
-          open(path, 'w').write(src)
-          print('Patched: stub provisioning profiles enabled')
-          EOF
+          assert old_fn in src, 'Pattern not found in BuildConfiguration.py'
+          open(path, 'w').write(src.replace(old_fn, new_fn))
+          print('Patched BuildConfiguration.py — stub profiles enabled')
+          PYEOF
+          python3 /tmp/patch_bc.py
 
       - name: Build debug_sim_arm64
         working-directory: telegram-ios
