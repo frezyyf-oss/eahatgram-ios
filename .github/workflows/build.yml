@@ -44,6 +44,7 @@ jobs:
             build \
             --continueOnError \
             --configurationPath build-system/appstore-configuration.json \
+            --xcodeManagedCodesigning \
             --buildNumber="${{ github.run_number }}" \
             --configuration=debug_sim_arm64
 
