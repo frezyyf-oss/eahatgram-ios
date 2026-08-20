@@ -85,17 +85,27 @@ jobs:
             -out /tmp/signing.p12 -passout pass:"" 2>/dev/null
           echo "p12 created"
 
-          # Import into SYSTEM keychain — Bazel sandbox strips HOME so user keychain
-          # is not in the search list; system keychain is always accessible
+          # Dedicated keychain at a fixed /Library path — Bazel sandbox strips HOME
+          # so user keychains are invisible; a /Library keychain added to the system
+          # domain is always in the security search list regardless of HOME.
+          # KPASS is the keychain password (not the key password); set-key-partition-list
+          # needs the correct keychain password to permanently authorize codesign.
+          KPASS="eahat-build-2024"
+          sudo security delete-keychain /Library/Keychains/eahat.keychain-db 2>/dev/null || true
+          sudo security create-keychain -p "$KPASS" /Library/Keychains/eahat.keychain-db
+          sudo security unlock-keychain -p "$KPASS" /Library/Keychains/eahat.keychain-db
           sudo security import /tmp/signing.p12 -P "" \
-            -k /Library/Keychains/System.keychain \
-            -T /usr/bin/codesign 2>/dev/null || true
-          sudo security set-key-partition-list -S apple-tool:,apple: -s -k "" \
-            /Library/Keychains/System.keychain 2>/dev/null || true
-          sudo security add-trusted-cert -d -r trustRoot \
-            -k /Library/Keychains/System.keychain /tmp/sign_cert.pem 2>/dev/null || true
-          echo "system keychain configured"
-          security find-identity -v /Library/Keychains/System.keychain || true
+            -k /Library/Keychains/eahat.keychain-db \
+            -T /usr/bin/codesign -T /usr/bin/security
+          # grant codesign permanent access to the private key without UI prompts
+          sudo security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KPASS" /Library/Keychains/eahat.keychain-db
+          # add to system domain so security find-identity works with exec env -
+          sudo security list-keychains -d system \
+            -s /Library/Keychains/System.keychain \
+               /Library/Keychains/eahat.keychain-db
+          echo "keychain configured"
+          security find-identity -v /Library/Keychains/eahat.keychain-db
 
           # Profile plist with our cert DER in DeveloperCertificates so rules_apple
           # process-and-sign can match the identity.
