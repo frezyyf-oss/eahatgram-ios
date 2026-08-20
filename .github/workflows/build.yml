@@ -66,6 +66,11 @@ jobs:
           key: bazel-${{ runner.os }}-${{ hashFiles('telegram-ios/WORKSPACE') }}
           restore-keys: bazel-${{ runner.os }}-
 
+      - name: Patch bazelrc to disable provisioning profiles
+        working-directory: telegram-ios
+        run: |
+          echo 'build --//Telegram:disableProvisioningProfiles' >> .bazelrc
+
       - name: Stub provisioning profiles for simulator
         working-directory: telegram-ios
         run: |
@@ -92,7 +97,6 @@ jobs:
           python3 build-system/Make/Make.py \
             --overrideXcodeVersion \
             --cacheDir "$HOME/telegram-bazel-cache" \
-            --bazelArguments="--//Telegram:disableProvisioningProfiles" \
             build \
             --continueOnError \
             --configurationPath build-system/appstore-configuration.json \
