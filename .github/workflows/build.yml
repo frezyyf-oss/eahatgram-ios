@@ -65,14 +65,33 @@ jobs:
 
       - name: Set up signing identity and provisioning profiles
         run: |
-          # Generate self-signed cert (one cert serves both profile CMS-signing and app codesigning)
-          # Two-step to avoid -newkey compatibility issues; simple CN (no parens) for LibreSSL
+          # Generate self-signed cert with codeSigning EKU.
+          # security find-identity -p codesigning filters on Extended Key Usage =
+          # 1.3.6.1.5.5.7.3.3 (id-kp-codeSigning). Without this OID the cert is
+          # trusted but invisible to that policy filter, which is what rules_apple
+          # process-and-sign uses to find the signing identity.
+          cat > /tmp/cs.cnf << 'CNF'
+          [req]
+          distinguished_name = dn
+          x509_extensions    = v3
+          prompt             = no
+          [dn]
+          CN = eahat-signing
+          O  = eahat
+          C  = US
+          [v3]
+          keyUsage         = critical,digitalSignature
+          extendedKeyUsage = critical,codeSigning
+          subjectKeyIdentifier = hash
+          CNF
           openssl genrsa -out /tmp/sign_key.pem 2048 2>/dev/null
           openssl req -x509 -new \
             -key /tmp/sign_key.pem -out /tmp/sign_cert.pem \
             -days 365 \
-            -subj "/CN=eahat-signing/O=eahat/C=US"
+            -config /tmp/cs.cnf \
+            -extensions v3
           echo "cert created"
+          openssl x509 -in /tmp/sign_cert.pem -text -noout | grep -A3 "Key Usage" || true
 
           CERT_B64=$(openssl x509 -in /tmp/sign_cert.pem -outform DER | base64 | tr -d '\n')
 
