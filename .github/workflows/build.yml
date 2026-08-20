@@ -65,40 +65,42 @@ jobs:
 
       - name: Set up signing identity and provisioning profiles
         run: |
-          # Single self-signed cert used for both CMS-signing the profile and app codesigning
-          openssl req -x509 -newkey rsa:2048 \
-            -keyout /tmp/sign_key.pem -out /tmp/sign_cert.pem \
-            -days 365 -nodes \
-            -subj "/CN=iPhone Developer: eahat (C67CF9S4VU)/O=eahat/C=US" 2>/dev/null
+          # Generate self-signed cert (one cert serves both profile CMS-signing and app codesigning)
+          # Two-step to avoid -newkey compatibility issues; simple CN (no parens) for LibreSSL
+          openssl genrsa -out /tmp/sign_key.pem 2048 2>/dev/null
+          openssl req -x509 -new \
+            -key /tmp/sign_key.pem -out /tmp/sign_cert.pem \
+            -days 365 \
+            -subj "/CN=eahat-signing/O=eahat/C=US"
+          echo "cert created"
 
           CERT_B64=$(openssl x509 -in /tmp/sign_cert.pem -outform DER | base64 | tr -d '\n')
 
+          # p12 bundle for keychain import
           openssl pkcs12 -export \
             -inkey /tmp/sign_key.pem -in /tmp/sign_cert.pem \
+            -out /tmp/signing.p12 -passout pass:"" 2>/dev/null || \
+          openssl pkcs12 -legacy -export \
+            -inkey /tmp/sign_key.pem -in /tmp/sign_cert.pem \
             -out /tmp/signing.p12 -passout pass:"" 2>/dev/null
+          echo "p12 created"
 
-          # SYSTEM keychain — Bazel sandbox strips HOME so user keychain is invisible to actions
+          # Import into SYSTEM keychain — Bazel sandbox strips HOME so user keychain
+          # is not in the search list; system keychain is always accessible
           sudo security import /tmp/signing.p12 -P "" \
             -k /Library/Keychains/System.keychain \
-            -T /usr/bin/codesign -T /usr/bin/security 2>/dev/null
+            -T /usr/bin/codesign 2>/dev/null || true
           sudo security set-key-partition-list -S apple-tool:,apple: -s -k "" \
             /Library/Keychains/System.keychain 2>/dev/null || true
-          # Also trust the cert so security cms -D can decode the signed profile
           sudo security add-trusted-cert -d -r trustRoot \
-            -k /Library/Keychains/System.keychain /tmp/sign_cert.pem
+            -k /Library/Keychains/System.keychain /tmp/sign_cert.pem 2>/dev/null || true
+          echo "system keychain configured"
+          security find-identity -v /Library/Keychains/System.keychain || true
 
-          # User keychain so security cms -S can sign
-          security create-keychain -p "" /tmp/build.keychain 2>/dev/null || true
-          security unlock-keychain -p "" /tmp/build.keychain
-          security import /tmp/signing.p12 -P "" -k /tmp/build.keychain \
-            -T /usr/bin/security 2>/dev/null
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" /tmp/build.keychain 2>/dev/null || true
-          security list-keychains -d user -s /tmp/build.keychain \
-            $(security list-keychains -d user | tr -d '"')
-
-          # Profile plist — DeveloperCertificates has our cert DER so rules_apple finds the identity.
-          # app-groups entitlement is CRITICAL: without it Telegram can't open its shared database
-          # and will show a black screen forever.
+          # Profile plist with our cert DER in DeveloperCertificates so rules_apple
+          # process-and-sign can match the identity.
+          # com.apple.security.application-groups is REQUIRED: without it Telegram
+          # cannot open its shared database container → black screen on launch.
           cat > /tmp/profile.plist << PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -126,13 +128,16 @@ jobs:
             </dict>
           </dict></plist>
           PLIST
+          echo "profile plist created"
 
-          security cms -S -N "iPhone Developer: eahat (C67CF9S4VU)" \
-            -k /tmp/build.keychain \
-            -i /tmp/profile.plist \
-            -o /tmp/fake.mobileprovision
-          echo "Profile: $(wc -c < /tmp/fake.mobileprovision) bytes"
-          security find-identity -v /Library/Keychains/System.keychain
+          # openssl smime -sign: no keychain needed, compatible with LibreSSL on macOS
+          openssl smime -sign \
+            -in /tmp/profile.plist \
+            -signer /tmp/sign_cert.pem \
+            -inkey /tmp/sign_key.pem \
+            -outform DER -nodetach \
+            -out /tmp/fake.mobileprovision 2>/dev/null
+          echo "fake.mobileprovision: $(wc -c < /tmp/fake.mobileprovision) bytes"
 
       - name: Patch BuildConfiguration.py to copy CMS profiles
         working-directory: telegram-ios
