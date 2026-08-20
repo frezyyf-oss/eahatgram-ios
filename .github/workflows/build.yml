@@ -35,6 +35,9 @@ jobs:
           cp "$SRC/submodules/SettingsUI/Sources/EahatGramNFTController.swift"    "$DST/submodules/SettingsUI/Sources/"
           cp "$SRC/submodules/SettingsUI/Sources/EahatGramRatingController.swift" "$DST/submodules/SettingsUI/Sources/"
 
+          # Config with API 2040
+          cp "$SRC/build-system/appstore-configuration.json" "$DST/build-system/"
+
           # Modified files
           cp "$SRC/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift" \
              "$DST/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/"
