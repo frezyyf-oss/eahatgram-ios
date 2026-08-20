@@ -70,6 +70,11 @@ jobs:
           key: bazel-${{ runner.os }}-${{ hashFiles('telegram-ios/WORKSPACE') }}
           restore-keys: bazel-${{ runner.os }}-
 
+      - name: Import fake signing certificates
+        working-directory: telegram-ios
+        run: |
+          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+
       - name: Build debug_arm64
         working-directory: telegram-ios
         env:
