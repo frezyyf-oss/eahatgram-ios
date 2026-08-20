@@ -106,12 +106,12 @@ jobs:
           unzip -q orig.ipa
           # Re-sign all bundles from innermost outward
           find Payload -name "*.dylib" -o -name "*.framework" | sort -r | while read f; do
-            codesign --force --sign - "$f" 2>/dev/null || true
+            codesign --force --sign - --preserve-metadata=entitlements,requirements,identifier "$f" 2>/dev/null || true
           done
           find Payload -name "*.appex" | while read f; do
-            codesign --force --sign - "$f" 2>/dev/null || true
+            codesign --force --sign - --preserve-metadata=entitlements,requirements,identifier "$f" 2>/dev/null || true
           done
-          codesign --force --sign - Payload/*.app 2>/dev/null || true
+          codesign --force --sign - --preserve-metadata=entitlements,requirements,identifier Payload/*.app 2>/dev/null || true
           zip -qr "$GITHUB_WORKSPACE/telegram-ios/eahatgram-device.ipa" Payload
 
       - name: Upload IPA
