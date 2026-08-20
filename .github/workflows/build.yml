@@ -69,25 +69,11 @@ jobs:
           key: bazel-${{ runner.os }}-${{ hashFiles('telegram-ios/WORKSPACE') }}
           restore-keys: bazel-${{ runner.os }}-
 
-      - name: Create ad-hoc signing identity
-        run: |
-          security create-keychain -p "build" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "build" build.keychain
-          security set-keychain-settings -t 7200 build.keychain
-          openssl req -x509 -newkey rsa:2048 -keyout /tmp/k.pem -out /tmp/c.pem \
-            -days 1 -nodes -subj "/CN=iPhone Developer/O=eahat/C=US" 2>/dev/null
-          openssl pkcs12 -export -inkey /tmp/k.pem -in /tmp/c.pem \
-            -out /tmp/cert.p12 -passout pass:"" 2>/dev/null
-          security import /tmp/cert.p12 -P "" -k build.keychain \
-            -T /usr/bin/codesign -T /usr/bin/security 2>/dev/null
-          security set-key-partition-list -S apple-tool:,apple: -s -k "build" build.keychain 2>/dev/null
-          security find-identity -v -p codesigning build.keychain
-
-      - name: Patch bazelrc to disable provisioning profiles
+      - name: Patch bazelrc to disable provisioning profiles and use ad-hoc signing
         working-directory: telegram-ios
         run: |
           echo 'build --//Telegram:disableProvisioningProfiles' >> .bazelrc
+          echo 'build --define=apple.add_signing_identity=-' >> .bazelrc
 
       - name: Stub provisioning profiles for simulator
         working-directory: telegram-ios
@@ -111,6 +97,10 @@ jobs:
 
       - name: Build debug_arm64
         working-directory: telegram-ios
+        env:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGNING_REQUIRED: "NO"
+          CODE_SIGNING_ALLOWED: "YES"
         run: |
           python3 build-system/Make/Make.py \
             --overrideXcodeVersion \
