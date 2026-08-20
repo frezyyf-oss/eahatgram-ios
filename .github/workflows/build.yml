@@ -47,6 +47,7 @@ jobs:
              "$DST/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/"
           cp "$SRC/submodules/TelegramUI/Sources/ChatController.swift" \
              "$DST/submodules/TelegramUI/Sources/"
+          cp -R "$SRC/build-system/fake-codesigning" "$DST/build-system/"
 
       - name: Select Xcode
         run: |
@@ -126,24 +127,10 @@ jobs:
           # Quick decode test
           security cms -D -i /tmp/fake.mobileprovision | grep -q "eahat" && echo "decode OK"
 
-      - name: Patch BuildConfiguration.py to copy CMS profiles
+      - name: Use checked-in fake codesigning data
         working-directory: telegram-ios
         run: |
-          python3 - << 'PYEOF'
-          path = 'build-system/Make/BuildConfiguration.py'
-          src = open(path).read()
-          old_fn = '    def copy_profiles_to_destination(self, destination_path):\n        pass'
-          new_fn = (
-              '    def copy_profiles_to_destination(self, destination_path):\n'
-              '        import os as _os, shutil as _sh\n'
-              '        _os.makedirs(destination_path, exist_ok=True)\n'
-              '        for _n in ["Telegram","Share","NotificationService","NotificationContent","Widget","BroadcastUpload","Intents"]:\n'
-              '            _sh.copy("/tmp/fake.mobileprovision", _os.path.join(destination_path, _n + ".mobileprovision"))'
-          )
-          assert old_fn in src, 'Pattern not found'
-          open(path, 'w').write(src.replace(old_fn, new_fn))
-          print('Patched BuildConfiguration.py')
-          PYEOF
+          echo "Using build-system/fake-codesigning for provisioning profiles"
 
       - name: Build debug_arm64
         working-directory: telegram-ios
@@ -158,7 +145,7 @@ jobs:
             build \
             --continueOnError \
             --configurationPath build-system/appstore-configuration.json \
-            --xcodeManagedCodesigning \
+            --codesigningInformationPath=build-system/fake-codesigning \
             --buildNumber="${{ github.run_number }}" \
             --configuration=debug_arm64
 
