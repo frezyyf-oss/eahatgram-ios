@@ -95,17 +95,20 @@ If you encounter this issue, re-run the project generation steps in the README.
 
 # Tips
 
-## Codesigning is not required for simulator-only builds
+## Codesigning for local verification builds
 
-Add `--disableProvisioningProfiles`:
+Use the checked-in fake codesigning bundle when you need a device-capable build without Apple-issued profiles:
 ```
 python3 build-system/Make/Make.py \
     --cacheDir="$HOME/telegram-bazel-cache" \
-    generateProject \
+    build \
     --configurationPath=path-to-configuration.json \
-    --codesigningInformationPath=path-to-provisioning-data \
-    --disableProvisioningProfiles
+    --codesigningInformationPath=build-system/fake-codesigning \
+    --buildNumber=100001 \
+    --configuration=release_arm64
 ```
+
+`--disableProvisioningProfiles` is only appropriate for simulator-oriented project generation and will break device builds.
 
 ## Versions
 
@@ -114,4 +117,3 @@ Each release is built using a specific Xcode version (see `versions.json`). The 
 ```
 python3 build-system/Make/Make.py --overrideXcodeVersion build ... # Don't check the version of Xcode
 ```
-"# eahatgram-ios" 
