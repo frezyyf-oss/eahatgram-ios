@@ -105,8 +105,13 @@ jobs:
           sudo security list-keychains -d system \
             -s /Library/Keychains/System.keychain \
                /Library/Keychains/eahat.keychain-db
+          # trust our self-signed cert as a root so -p codesigning filter shows it
+          # rules_apple process-and-sign uses: security find-identity -v -p codesigning
+          sudo security add-trusted-cert -d -r trustRoot \
+            -k /Library/Keychains/System.keychain /tmp/sign_cert.pem
           echo "keychain configured"
-          security find-identity -v /Library/Keychains/eahat.keychain-db
+          echo "=== Code-signing identities visible to rules_apple ==="
+          security find-identity -v -p codesigning
 
           # Profile plist with our cert DER in DeveloperCertificates so rules_apple
           # process-and-sign can match the identity.
@@ -149,6 +154,18 @@ jobs:
             -outform DER -nodetach \
             -out /tmp/fake.mobileprovision 2>/dev/null
           echo "fake.mobileprovision: $(wc -c < /tmp/fake.mobileprovision) bytes"
+
+      - name: Verify signing setup
+        run: |
+          echo "=== Identity visible without HOME (simulates Bazel exec env -) ==="
+          env -i PATH=/usr/bin:/bin:/usr/sbin security find-identity -v -p codesigning
+          echo "=== Profile decodeable? ==="
+          security cms -D -i /tmp/fake.mobileprovision | grep -c DeveloperCertificates && echo "profile OK" || echo "profile FAIL"
+          echo "=== Test codesign with our identity ==="
+          IDENT=$(env -i PATH=/usr/bin:/bin:/usr/sbin security find-identity -v -p codesigning | awk '/eahat-signing/{print $2; exit}')
+          echo "Found identity: $IDENT"
+          touch /tmp/test_bundle
+          env -i PATH=/usr/bin:/bin:/usr/sbin codesign --force --sign "$IDENT" /tmp/test_bundle && echo "codesign OK" || echo "codesign FAILED"
 
       - name: Patch BuildConfiguration.py to copy CMS profiles
         working-directory: telegram-ios
