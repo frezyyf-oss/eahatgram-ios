@@ -63,36 +63,13 @@ jobs:
           key: bazel-${{ runner.os }}-${{ hashFiles('telegram-ios/WORKSPACE') }}
           restore-keys: bazel-${{ runner.os }}-
 
-      - name: Set up signing identity from fake-codesigning certs
+      - name: Import fake-codesigning certificates
         working-directory: telegram-ios
         run: |
-          # Import Telegram's repo-committed fake cert into a system-domain keychain
-          # so codesign finds it inside Bazel's stripped-HOME exec environment.
-          KPASS="eahat-build-2024"
-          sudo security delete-keychain /Library/Keychains/eahat.keychain-db 2>/dev/null || true
-          sudo security create-keychain -p "$KPASS" /Library/Keychains/eahat.keychain-db
-          sudo security unlock-keychain -p "$KPASS" /Library/Keychains/eahat.keychain-db
+          python3 build-system/Make/ImportCertificates.py \
+            --path build-system/fake-codesigning/certs
 
-          # SelfSigned.p12 uses an empty password (Telegram's convention)
-          sudo security import build-system/fake-codesigning/certs/SelfSigned.p12 \
-            -P '' \
-            -k /Library/Keychains/eahat.keychain-db \
-            -T /usr/bin/codesign -T /usr/bin/security
-          sudo security import build-system/fake-codesigning/certs/Public.cer \
-            -k /Library/Keychains/eahat.keychain-db
-          sudo security import build-system/AppleWWDRCAG3.cer \
-            -k /Library/Keychains/eahat.keychain-db 2>/dev/null || true
-
-          sudo security set-key-partition-list -S apple-tool:,apple: -s \
-            -k "$KPASS" /Library/Keychains/eahat.keychain-db
-          sudo security list-keychains -d system \
-            -s /Library/Keychains/System.keychain \
-               /Library/Keychains/eahat.keychain-db
-
-          echo "=== Code-signing identities visible to codesign ==="
-          security find-identity -v -p codesigning
-
-      - name: Build debug_arm64
+      - name: Build release_arm64
         working-directory: telegram-ios
         run: |
           python3 build-system/Make/Make.py \
@@ -103,9 +80,9 @@ jobs:
             --configurationPath build-system/appstore-configuration.json \
             --codesigningInformationPath build-system/fake-codesigning \
             --buildNumber="${{ github.run_number }}" \
-            --configuration=debug_arm64
+            --configuration=release_arm64
 
-      - name: Re-sign IPA for TrollStore
+      - name: Collect IPA
         working-directory: telegram-ios
         run: |
           IPA="bazel-bin/Telegram/Telegram.ipa"
@@ -114,61 +91,8 @@ jobs:
             ls bazel-bin/Telegram/ 2>/dev/null || true
             exit 1
           fi
-
-          # Full entitlements matching fake-codesigning/profiles/Telegram.mobileprovision.
-          # com.apple.security.application-groups is required — without it Telegram
-          # cannot open its shared database container and shows a black screen on launch.
-          # com.apple.developer.team-identifier is required for keychain access on iOS 17+.
-          cat > /tmp/ents.plist << 'ENT'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>application-identifier</key><string>C67CF9S4VU.ph.telegra.Telegraph</string>
-            <key>com.apple.developer.team-identifier</key><string>C67CF9S4VU</string>
-            <key>keychain-access-groups</key><array>
-              <string>C67CF9S4VU.*</string>
-              <string>com.apple.token</string>
-            </array>
-            <key>com.apple.security.application-groups</key><array>
-              <string>group.ph.telegra.Telegraph</string>
-            </array>
-            <key>get-task-allow</key><true/>
-            <key>aps-environment</key><string>development</string>
-            <key>com.apple.developer.pushkit.unrestricted-voip</key><true/>
-            <key>com.apple.developer.siri</key><true/>
-            <key>com.apple.developer.associated-domains</key><string>*</string>
-            <key>com.apple.developer.icloud-container-identifiers</key><array>
-              <string>iCloud.ph.telegra.Telegraph</string>
-            </array>
-            <key>com.apple.developer.icloud-services</key><string>*</string>
-            <key>com.apple.developer.ubiquity-container-identifiers</key><array>
-              <string>iCloud.ph.telegra.Telegraph</string>
-            </array>
-            <key>com.apple.developer.ubiquity-kvstore-identifier</key><string>C67CF9S4VU.*</string>
-            <key>com.apple.developer.usernotifications.communication</key><true/>
-            <key>com.apple.developer.usernotifications.filtering</key><true/>
-          </dict></plist>
-          ENT
-
-          WORK=$(mktemp -d)
-          cp "$IPA" "$WORK/orig.ipa"
-          cd "$WORK"
-          unzip -q orig.ipa
-
-          # Re-sign inner-to-outer: dylibs → frameworks → extensions → main app
-          find Payload -name "*.dylib" | sort -r | while read f; do
-            codesign --force --sign - "$f" 2>/dev/null || true
-          done
-          find Payload -type d -name "*.framework" | sort -r | while read f; do
-            codesign --force --sign - "$f" 2>/dev/null || true
-          done
-          find Payload -type d -name "*.appex" | sort -r | while read f; do
-            codesign --force --sign - --entitlements /tmp/ents.plist "$f" 2>/dev/null || true
-          done
-          codesign --force --sign - --entitlements /tmp/ents.plist Payload/*.app
-
-          zip -qr "$GITHUB_WORKSPACE/telegram-ios/eahatgram-device.ipa" Payload
-          echo "IPA ready: $(du -sh "$GITHUB_WORKSPACE/telegram-ios/eahatgram-device.ipa")"
+          cp "$IPA" eahatgram-device.ipa
+          echo "IPA ready: $(du -sh eahatgram-device.ipa)"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
